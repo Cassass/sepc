@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
+#include <sys/wait.h>
 
 #include "variante.h"
 #include "readcmd.h"
@@ -53,7 +55,7 @@ void terminate(char *line) {
 	clear_history();
 #endif
 	if (line)
-	  free(line);
+		free(line);
 	printf("exit\n");
 	exit(0);
 }
@@ -71,7 +73,7 @@ int main() {
 	while (1) {
 		struct cmdline *l;
 		char *line=0;
-		int i, j;
+		int i;
 		char *prompt = "ensishell>";
 
 		/* Readline use some internal memory structure that
@@ -121,12 +123,32 @@ int main() {
 
 		/* Display each command of the pipe */
 		for (i=0; l->seq[i]!=0; i++) {
+			int res;
 			char **cmd = l->seq[i];
-			printf("seq[%d]: ", i);
-                        for (j=0; cmd[j]!=0; j++) {
-                                printf("'%s' ", cmd[j]);
-                        }
-			printf("\n");
+			/* printf("seq[%d]: ", i); */
+			/* printf("la commande est %s", cmd[0]); */
+			switch (res = fork()){
+			case -1:
+				perror("fork : ");
+				break;
+			case 0:
+				// on est dans le fils, on charge la nouvelle commande
+				// on ne doit jamais retourner d'un exec
+				assert(execvp(cmd[0], cmd) != -1);
+				// on lance la commande avec ses args
+				break;
+			default:
+			{
+				//gestion de l'arrière plan
+				// on ne bloque que s'il n'y a pas d'arriere plan
+				// position du if a determiner : dans ou en dehors des parentheses
+				if (!l->bg){
+				int lock;
+				wait(&lock);
+				break;
+				}
+			}
+			}
 		}
 	}
 
