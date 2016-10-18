@@ -27,6 +27,13 @@
 #if USE_GUILE == 1
 #include <libguile.h>
 
+struct cell 
+{
+	int pid;
+	char **cmdl;
+	struct cell* next;
+};
+
 int question6_executer(char *line)
 {
 	/* Question 6: Insert your code to execute the command line
@@ -60,6 +67,68 @@ void terminate(char *line) {
 	exit(0);
 }
 
+//manipulation de la liste chainee utilisee pour jobs
+
+//insertion en tete
+void add_pid_list(struct cell **ptr_list, int p, char *command_line){
+	struct cell *new = malloc(sizeof(struct cell));
+	new->pid = p;
+	new->next = *ptr_list;
+	new->cmdl = command_line;
+	*ptr_list = new;
+}
+
+//suppresion
+//ya du factorisable la dedans
+void delete_pid(struct cell **ptr_list, struct cell *tbd){
+	struct cell* current = *ptr_list;
+
+	if (tbd->next == NULL){
+		free(tbd); // queue de liste
+	}else{
+		if (current->pid == tbd->pid){
+			// current "=" tbd puisque le pid est unique
+			// tbd en tete de liste
+			*ptr_list = current->next;
+			free(current);
+		}else{
+			while(current->next->pid != tbd->pid){
+				current = current->next;
+			}
+			//current est juste avant 
+			current->next = tbd->next;
+			free(tbd);
+		}
+	}
+}
+
+//parcours la liste chainee à la recherche des processus achevés
+void check_running(struct cell **ptr_list){
+	struct cell* current;
+	current = *ptr_list;
+	while (current != NULL){
+		if (waitpid(current->pid, NULL, WNOHANG) > 0){ //pas sur pour NULL
+			// autruche pour == -1, a traiter comme il se doit
+			// on supprime le pid de la liste si jamais le processus est terminé
+			delete_pid(ptr_list, current);
+		}else{
+			//le processus concerne est toujours actif, on affiche
+			printf("[%d]+  Running \t\t", current->pid);
+			for (i=0; cmd[i] != 0 ; ++i){
+				printf("%s ", cmd[i]);
+			}
+		}
+		current = current->next;
+	}
+	// remarquons que la suppression n'est pas nécessaire,
+	// afficher les processus actifs est suffisant
+}
+
+// commande shell `jobs` maison
+void jobs(struct cell **pid_list){
+	//on elage la liste chainee, on ne garde que les processus actifs
+	check_running(pid_list);
+}
 
 int main() {
         printf("Variante %d: %s\n", VARIANTE, VARIANTE_STRING);
@@ -99,7 +168,10 @@ int main() {
                         continue;
                 }
 #endif
-
+		// allocation de la liste des pid pour jobs
+		struct cell** pid_list = malloc(sizeof(struct cell*));
+		*pid_list = malloc(sizeof(struct cell));
+		
 		/* parsecmd free line and set it up to 0 */
 		l = parsecmd( & line);
 
@@ -125,29 +197,34 @@ int main() {
 		for (i=0; l->seq[i]!=0; i++) {
 			int res;
 			char **cmd = l->seq[i];
-			/* printf("seq[%d]: ", i); */
-			/* printf("la commande est %s", cmd[0]); */
-			switch (res = fork()){
-			case -1:
-				perror("fork : ");
-				break;
-			case 0:
-				// on est dans le fils, on charge la nouvelle commande
-				// on ne doit jamais retourner d'un exec
-				assert(execvp(cmd[0], cmd) != -1);
-				// on lance la commande avec ses args
-				break;
-			default:
-			{
-				//gestion de l'arrière plan
-				// on ne bloque que s'il n'y a pas d'arriere plan
-				// position du if a determiner : dans ou en dehors des parentheses
-				if (!l->bg){
-				int lock;
-				wait(&lock);
-				break;
+			if (strcmp(cmd[0], "jobs")){
+				// la commande courante est jobs
+				jobs(pid_list);
+			}else{
+				switch (res = fork()){
+				case -1:
+					perror("fork : ");
+					break;
+				case 0:					
+					// on est dans le fils
+					// chargement de la nouvelle commande
+					// on ne doit jamais retourner d'un exec
+					assert(execvp(cmd[0], cmd) != -1);
+					break;
+				default:
+				{
+					// actualisation de la liste des pids
+					add_pid_list(pid_list, res, cmd);
+
+					//gestion de l'arrière plan
+					// on ne bloque que s'il n'y a pas d'arriere plan
+					if (!l->bg){
+						int lock;
+						wait(&lock);
+						break;
+					}
 				}
-			}
+				}
 			}
 		}
 	}
