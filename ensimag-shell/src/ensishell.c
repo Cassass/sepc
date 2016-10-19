@@ -198,6 +198,11 @@ int main() {
 
 		/* Display each command of the pipe */
 		for (i=0; l->seq[i]!=0; i++) {
+			static int tuyau[2];
+			int tuyau_tmp[2];
+			memcpy(tuyau_tmp, tuyau, 2*sizeof(int));
+			if(l->seq[i+1] != 0) // pas de pipe possible sur la derniere commande
+				pipe(tuyau);
 			int res;
 			char **cmd = l->seq[i];
 			if (strcmp(cmd[0], "jobs") == 0){
@@ -210,22 +215,40 @@ int main() {
 					break;
 				case 0:					
 					// on est dans le fils
+					if(i != 0){ // pas le debut du pipe
+						dup2(tuyau_tmp[0], 0);
+						close(tuyau_tmp[0]);
+					}
+					if(l->seq[i+1] != 0){ // pas la fin du pipe
+						close(tuyau[0]);
+						dup2(tuyau[1], 1);
+						close(tuyau[1]);
+					}
 					// chargement de la nouvelle commande
-					// on ne doit jamais retourner d'un exec
 					assert(execvp(cmd[0], cmd) != -1);
-					break;
+					// on ne doit jamais retourner d'un exec
+					perror("retour exec, erreur chargement processus fils");
+					exit(0);
 				default:
 				{
-					// actualisation de la liste des pids
-					add_pid_list(pid_list, res, cmd[0]);
+					if(l->seq[i+1] != 0){
+						close(tuyau[1]);
+					}
+					if(i != 0){
+						close(tuyau_tmp[0]);
+					}
 
 					//gestion de l'arrière plan
 					// on ne bloque que s'il n'y a pas d'arriere plan
-					if (!l->bg){
+					// et qu'il s'agit de la derniere commande
+					if (!l->bg && (l->seq[i+1] == 0)){
 						int lock;
 						wait(&lock);
 						break;
-					}
+					}					
+					// actualisation de la liste des pids
+					add_pid_list(pid_list, res, cmd[0]);
+
 				}
 				}
 			}
