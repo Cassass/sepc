@@ -30,7 +30,7 @@
 struct cell 
 {
 	int pid;
-	char **cmdl;
+	char *command;
 	struct cell* next;
 };
 
@@ -70,11 +70,13 @@ void terminate(char *line) {
 //manipulation de la liste chainee utilisee pour jobs
 
 //insertion en tete
-void add_pid_list(struct cell **ptr_list, int p, char *command_line){
+void add_pid_list(struct cell **ptr_list, int p, char *cmd){
+	//int max = 0;
 	struct cell *new = malloc(sizeof(struct cell));
 	new->pid = p;
 	new->next = *ptr_list;
-	new->cmdl = command_line;
+	new->command = malloc(sizeof(char)*strlen(cmd));
+	strcpy(new->command, cmd);
 	*ptr_list = new;
 }
 
@@ -107,26 +109,26 @@ void check_running(struct cell **ptr_list){
 	struct cell* current;
 	current = *ptr_list;
 	while (current != NULL){
-		if (waitpid(current->pid, NULL, WNOHANG) > 0){ //pas sur pour NULL
+		if (waitpid(current->pid, NULL, WNOHANG) != 0){ //pas sur pour NULL
 			// autruche pour == -1, a traiter comme il se doit
 			// on supprime le pid de la liste si jamais le processus est terminé
 			delete_pid(ptr_list, current);
 		}else{
 			//le processus concerne est toujours actif, on affiche
-			printf("[%d]+  Running \t\t", current->pid);
-			for (i=0; cmd[i] != 0 ; ++i){
-				printf("%s ", cmd[i]);
-			}
+			printf("[%d]+  Running \t\t%s", current->pid, current->command);
 		}
+		printf("\n");
+
 		current = current->next;
 	}
+	
 	// remarquons que la suppression n'est pas nécessaire,
 	// afficher les processus actifs est suffisant
 }
 
 // commande shell `jobs` maison
 void jobs(struct cell **pid_list){
-	//on elage la liste chainee, on ne garde que les processus actifs
+	// parcours de la liste, affiche si processus actif, supprime sinon
 	check_running(pid_list);
 }
 
@@ -138,6 +140,10 @@ int main() {
         /* register "executer" function in scheme */
         scm_c_define_gsubr("executer", 1, 0, 0, executer_wrapper);
 #endif
+	// allocation de la liste des pid pour jobs
+	struct cell** pid_list = malloc(sizeof(struct cell*));
+	*pid_list = malloc(sizeof(struct cell));
+	*pid_list = NULL;
 
 	while (1) {
 		struct cmdline *l;
@@ -168,9 +174,6 @@ int main() {
                         continue;
                 }
 #endif
-		// allocation de la liste des pid pour jobs
-		struct cell** pid_list = malloc(sizeof(struct cell*));
-		*pid_list = malloc(sizeof(struct cell));
 		
 		/* parsecmd free line and set it up to 0 */
 		l = parsecmd( & line);
@@ -197,7 +200,7 @@ int main() {
 		for (i=0; l->seq[i]!=0; i++) {
 			int res;
 			char **cmd = l->seq[i];
-			if (strcmp(cmd[0], "jobs")){
+			if (strcmp(cmd[0], "jobs") == 0){
 				// la commande courante est jobs
 				jobs(pid_list);
 			}else{
@@ -214,7 +217,7 @@ int main() {
 				default:
 				{
 					// actualisation de la liste des pids
-					add_pid_list(pid_list, res, cmd);
+					add_pid_list(pid_list, res, cmd[0]);
 
 					//gestion de l'arrière plan
 					// on ne bloque que s'il n'y a pas d'arriere plan
