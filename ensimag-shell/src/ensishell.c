@@ -10,6 +10,9 @@
 #include <string.h>
 #include <assert.h>
 #include <sys/wait.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include "variante.h"
 #include "readcmd.h"
@@ -144,13 +147,14 @@ int main() {
 	struct cell** pid_list = malloc(sizeof(struct cell*));
 	*pid_list = malloc(sizeof(struct cell));
 	*pid_list = NULL;
-
+	
 	while (1) {
 		struct cmdline *l;
 		char *line=0;
 		int i;
 		char *prompt = "ensishell>";
-
+		int input = STDIN_FILENO; //e.g input = 0
+		int output = STDOUT_FILENO; //e.g output = 1
 		/* Readline use some internal memory structure that
 		   can not be cleaned at the end of the program. Thus
 		   one memory leak per command seems unavoidable yet */
@@ -191,9 +195,16 @@ int main() {
 			printf("error: %s\n", l->err);
 			continue;
 		}
-
-		if (l->in) printf("in: %s\n", l->in);
-		if (l->out) printf("out: %s\n", l->out);
+		
+		if (l->in){
+			input = open(l->in, O_RDONLY);
+			printf("in: %s\n", l->in);
+		}
+		if (l->out){ 
+			output = open(l->out, O_WRONLY | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
+			// == 777
+			printf("out: %s\n", l->out);
+		}
 		if (l->bg) printf("background (&)\n");
 
 		/* Display each command of the pipe */
@@ -215,14 +226,25 @@ int main() {
 					break;
 				case 0:					
 					// on est dans le fils
-					if(i != 0){ // pas le debut du pipe
+					if(i != 0){ // pas la premiere commande
 						dup2(tuyau_tmp[0], 0);
 						close(tuyau_tmp[0]);
+						
+					}else{ // 1e commande
+						if(input != 0){ //entree autre que stdin
+							// redirection sur l'entree
+							dup2(input, 0);
+						}
 					}
-					if(l->seq[i+1] != 0){ // pas la fin du pipe
+					if(l->seq[i+1] != 0){ // pas la derniere commande
 						close(tuyau[0]);
 						dup2(tuyau[1], 1);
 						close(tuyau[1]);
+					}else{
+						if(output != 1){ //sortie autre que stdout
+							// redirection sur la sortie
+							dup2(output, 1);
+						}
 					}
 					// chargement de la nouvelle commande
 					assert(execvp(cmd[0], cmd) != -1);
