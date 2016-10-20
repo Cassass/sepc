@@ -44,6 +44,7 @@ int question6_executer(char *line)
 	 * parsecmd, then fork+execvp, for a single command.
 	 * pipe and i/o redirection are not required.
 	 */
+	standard_executer(line, NULL);
 	printf("Not implemented yet: can not execute %s\n", line);
 
 	/* Remove this line when using parsecmd as it will free it */
@@ -52,23 +53,6 @@ int question6_executer(char *line)
 	return 0;
 }
 
-SCM executer_wrapper(SCM x)
-{
-        return scm_from_int(question6_executer(scm_to_locale_stringn(x, 0)));
-}
-#endif
-
-
-void terminate(char *line) {
-#if USE_GNU_READLINE == 1
-	/* rl_clear_history() does not exist yet in centOS 6 */
-	clear_history();
-#endif
-	if (line)
-		free(line);
-	printf("exit\n");
-	exit(0);
-}
 
 //manipulation de la liste chainee utilisee pour jobs
 
@@ -118,9 +102,8 @@ void check_running(struct cell **ptr_list){
 			delete_pid(ptr_list, current);
 		}else{
 			//le processus concerne est toujours actif, on affiche
-			printf("[%d]+  Running \t\t%s", current->pid, current->command);
+			printf("[%d]+  Running \t\t%s \n", current->pid, current->command);
 		}
-		printf("\n");
 
 		current = current->next;
 	}
@@ -135,8 +118,140 @@ void jobs(struct cell **pid_list){
 	check_running(pid_list);
 }
 
+void terminate(char *line) {
+#if USE_GNU_READLINE == 1
+	/* rl_clear_history() does not exist yet in centOS 6 */
+	clear_history();
+#endif
+	if (line)
+		free(line);
+	printf("exit\n");
+	exit(0);
+}
+
+void treat_command(struct cmdline *l, int i, int input, int output, struct cell** pid_list){
+		static int tuyau[2];
+		int tuyau_tmp[2];
+		memcpy(tuyau_tmp, tuyau, 2*sizeof(int));
+		if(l->seq[i+1] != 0) // pas de pipe possible sur la derniere commande
+			pipe(tuyau);
+		int res;
+		char **cmd = l->seq[i];
+		if (strcmp(cmd[0], "jobs") == 0){
+			// la commande courante est jobs
+			jobs(pid_list);
+		}else{
+			switch (res = fork()){
+			case -1:
+				perror("fork : ");
+				break;
+			case 0:					
+				// on est dans le fils
+				if(i != 0){ // pas la premiere commande
+					dup2(tuyau_tmp[0], 0);
+					close(tuyau_tmp[0]);
+						
+				}else{ // 1e commande
+					if(input != 0){ //entree autre que stdin
+							// redirection sur l'entree
+						dup2(input, 0);
+					}
+				}
+				if(l->seq[i+1] != 0){ // pas la derniere commande
+					close(tuyau[0]);
+					dup2(tuyau[1], 1);
+					close(tuyau[1]);
+				}else{
+					if(output != 1){ //sortie autre que stdout
+						// redirection sur la sortie
+						dup2(output, 1);
+					}
+				}
+				// chargement de la nouvelle commande
+				assert(execvp(cmd[0], cmd) != -1);
+				// on ne doit jamais retourner d'un exec
+				perror("retour exec, erreur chargement processus fils");
+				exit(0);
+			default:
+			{
+				if(l->seq[i+1] != 0){
+					close(tuyau[1]);
+				}
+				if(i != 0){
+					close(tuyau_tmp[0]);
+				}
+
+				//gestion de l'arrière plan
+				// on ne bloque que s'il n'y a pas d'arriere plan
+				// et qu'il s'agit de la derniere commande
+				if (!l->bg && (l->seq[i+1] == 0)){
+					int lock;
+					wait(&lock);
+					break;
+				}					
+				// actualisation de la liste des pids
+				add_pid_list(pid_list, res, cmd[0]);
+
+			}
+			}
+		}
+	
+}
+
+int standard_executer(char* line, struct cell** pid_list){
+	int input = STDIN_FILENO; //e.g input = 0
+	int output = STDOUT_FILENO; //e.g output = 1
+	struct cmdline *l;
+	int i;
+	/* struct cell** pid_list = malloc(sizeof(struct cell*)); */
+	/* *pid_list = malloc(sizeof(struct cell)); */
+	/* *pid_list = NULL; */
+	/* parsecmd free line and set it up to 0 */
+	l = parsecmd( & line);
+
+	/* If input stream closed, normal termination */
+	if (!l) {
+		  
+		terminate(0);
+	}		
+	if (l->err) {
+		/* Syntax error, read another command */
+		printf("error: %s\n", l->err);
+		return 0;
+	}
+	if (l->in){
+		input = open(l->in, O_RDONLY); // si redirection d'entrée, ouverture en lecture
+		assert(input != -1);
+		printf("in: %s\n", l->in);
+	}
+	if (l->out){ 
+		output = open(l->out, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU | S_IRWXG | S_IRWXO);
+		assert(output != -1);		
+		// == 777
+		printf("out: %s\n", l->out);
+	}
+	if (l->bg) printf("background (&)\n");
+
+	for (i=0; l->seq[i]!=0; i++) {
+		treat_command(l, i, input, output, pid_list);
+	}
+
+	return 0;
+}
+
+SCM executer_wrapper(SCM x)
+{
+        return scm_from_int(question6_executer(scm_to_locale_stringn(x, 0)));
+}
+#endif
+
+
+
 int main() {
         printf("Variante %d: %s\n", VARIANTE, VARIANTE_STRING);
+	struct cell** pid_list = malloc(sizeof(struct cell*));
+	*pid_list = malloc(sizeof(struct cell));
+	*pid_list = NULL;
 
 #if USE_GUILE == 1
         scm_init_guile();
@@ -144,17 +259,10 @@ int main() {
         scm_c_define_gsubr("executer", 1, 0, 0, executer_wrapper);
 #endif
 	// allocation de la liste des pid pour jobs
-	struct cell** pid_list = malloc(sizeof(struct cell*));
-	*pid_list = malloc(sizeof(struct cell));
-	*pid_list = NULL;
 	
 	while (1) {
-		struct cmdline *l;
 		char *line=0;
-		int i;
-		char *prompt = "ensishell>";
-		int input = STDIN_FILENO; //e.g input = 0
-		int output = STDOUT_FILENO; //e.g output = 1
+		char *prompt = "ensishell> ";
 		/* Readline use some internal memory structure that
 		   can not be cleaned at the end of the program. Thus
 		   one memory leak per command seems unavoidable yet */
@@ -178,103 +286,9 @@ int main() {
                         continue;
                 }
 #endif
+		standard_executer(line, pid_list); 
+		// amelioration : supprimer pid_list des args
 		
-		/* parsecmd free line and set it up to 0 */
-		l = parsecmd( & line);
-
-		/* If input stream closed, normal termination */
-		if (!l) {
-		  
-			terminate(0);
-		}
-		
-
-		
-		if (l->err) {
-			/* Syntax error, read another command */
-			printf("error: %s\n", l->err);
-			continue;
-		}
-		
-		if (l->in){
-			input = open(l->in, O_RDONLY);
-			printf("in: %s\n", l->in);
-		}
-		if (l->out){ 
-			output = open(l->out, O_WRONLY | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
-			// == 777
-			printf("out: %s\n", l->out);
-		}
-		if (l->bg) printf("background (&)\n");
-
-		/* Display each command of the pipe */
-		for (i=0; l->seq[i]!=0; i++) {
-			static int tuyau[2];
-			int tuyau_tmp[2];
-			memcpy(tuyau_tmp, tuyau, 2*sizeof(int));
-			if(l->seq[i+1] != 0) // pas de pipe possible sur la derniere commande
-				pipe(tuyau);
-			int res;
-			char **cmd = l->seq[i];
-			if (strcmp(cmd[0], "jobs") == 0){
-				// la commande courante est jobs
-				jobs(pid_list);
-			}else{
-				switch (res = fork()){
-				case -1:
-					perror("fork : ");
-					break;
-				case 0:					
-					// on est dans le fils
-					if(i != 0){ // pas la premiere commande
-						dup2(tuyau_tmp[0], 0);
-						close(tuyau_tmp[0]);
-						
-					}else{ // 1e commande
-						if(input != 0){ //entree autre que stdin
-							// redirection sur l'entree
-							dup2(input, 0);
-						}
-					}
-					if(l->seq[i+1] != 0){ // pas la derniere commande
-						close(tuyau[0]);
-						dup2(tuyau[1], 1);
-						close(tuyau[1]);
-					}else{
-						if(output != 1){ //sortie autre que stdout
-							// redirection sur la sortie
-							dup2(output, 1);
-						}
-					}
-					// chargement de la nouvelle commande
-					assert(execvp(cmd[0], cmd) != -1);
-					// on ne doit jamais retourner d'un exec
-					perror("retour exec, erreur chargement processus fils");
-					exit(0);
-				default:
-				{
-					if(l->seq[i+1] != 0){
-						close(tuyau[1]);
-					}
-					if(i != 0){
-						close(tuyau_tmp[0]);
-					}
-
-					//gestion de l'arrière plan
-					// on ne bloque que s'il n'y a pas d'arriere plan
-					// et qu'il s'agit de la derniere commande
-					if (!l->bg && (l->seq[i+1] == 0)){
-						int lock;
-						wait(&lock);
-						break;
-					}					
-					// actualisation de la liste des pids
-					add_pid_list(pid_list, res, cmd[0]);
-
-				}
-				}
-			}
-		}
 	}
 
 }
