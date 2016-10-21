@@ -14,6 +14,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdbool.h>
+#include <glob.h>
 
 #include "jobs_handler.h"
 #include "variante.h"
@@ -77,6 +78,14 @@ void treat_scheme_command(struct cmdline *l, int i, int input, int output){
 		}
 		}
 	}	
+}
+
+void replace_glob(char **cmd){
+	glob_t* pglob = malloc(sizeof(glob_t));
+	for (int i = 1; cmd[i] != 0; i++){
+		glob(cmd[i], GLOB_DOOFFS | (GLOB_APPEND & (i==1)), NULL, pglob);
+	}
+	
 }
 void treat_command(struct cmdline *l, int i, int input, int output){
 	static int tuyau[2];
