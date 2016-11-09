@@ -22,7 +22,7 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${SDL_INCLUDE_CFLAGS} -Wall -Wer
 #########
 # Vous devez editer les lignes suivantes pour y mettre vos logins
 #########
-set(VARIANTE_LOGINS login1 login2 login3)
+set(VARIANTE_LOGINS cassassf)
 
 #########
 
@@ -38,7 +38,7 @@ endif()
 # shell il faut les ajouter ici
 ##
 add_executable(ensipong src/shmem_pong.c)
-target_link_libraries(ensipong ${SDL_LIBRARY})
+target_link_libraries(ensipong ${SDL_LIBRARY} -lrt)
 
 ##
 # Programme de test
