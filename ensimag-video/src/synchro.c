@@ -16,10 +16,10 @@ pthread_mutex_t synchro_texture;
 pthread_mutex_t synchro_conso;
 pthread_mutex_t synchro_depo;
 // conditions pour les synchros
-pthread_cond_t cond_fenetre = PTHREAD_COND_INITIALIZER;
-pthread_cond_t cond_texture = PTHREAD_COND_INITIALIZER;
-pthread_cond_t cond_conso = PTHREAD_COND_INITIALIZER;
-pthread_cond_t cond_depo = PTHREAD_COND_INITIALIZER;
+pthread_cond_t cond_fenetre;
+pthread_cond_t cond_texture;
+pthread_cond_t cond_conso;
+pthread_cond_t cond_depo;
 // booleen pour attente fenetre/texture
 bool tex_done = false;
 // nombre courant de textures deposees pas affichees
@@ -85,7 +85,7 @@ void debutDeposerTexture() {
 
 }
 
-//  depose
+//  depot
 void finDeposerTexture() {
     pthread_mutex_lock(&synchro_depo);
     ++nb_tex;

@@ -26,7 +26,30 @@ int main(int argc, char *argv[]) {
     res = SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO|SDL_INIT_EVENTS);
     atexit(SDL_Quit);
     assert(res == 0);
-    
+
+    // initialisation des structures mises en place dans synchro
+    // initialisation des mutex
+    int check_init_mutex = 0;
+    check_init_mutex = pthread_mutex_init(&hashmap_mutex,NULL);
+    check_init_mutex += pthread_mutex_init(&synchro_fenetre,NULL);
+    check_init_mutex += pthread_mutex_init(&synchro_texture,NULL);
+    check_init_mutex += pthread_mutex_init(&synchro_conso,NULL);
+    check_init_mutex += pthread_mutex_init(&synchro_depo,NULL);
+    if (check_init_mutex != 0){
+        // nb : on peut le gérer via des perror et la fct en define
+        // mais c'est long pour pas grand chose
+        printf("[main] %i erreur(s) dans l'init des mutex\n", check_init_mutex);
+        exit(EXIT_FAILURE);
+    }
+    // initialisation des conditions associees
+    check_init_mutex = pthread_cond_init(&cond_fenetre, NULL);
+    check_init_mutex += pthread_cond_init(&cond_texture, NULL);
+    check_init_mutex += pthread_cond_init(&cond_conso, NULL);
+    check_init_mutex += pthread_cond_init(&cond_depo, NULL);
+    if (check_init_mutex != 0) {
+        printf("[main] %i errreurs(s) dans l'init des mutex\n", check_init_mutex);
+        exit(EXIT_FAILURE);
+    }
     // start the two stream readers
     int check_theora;
     int check_vorbis;
@@ -79,5 +102,22 @@ int main(int argc, char *argv[]) {
         printf("thread [%lu , sdl] was cancelled\n", sdl_thread);
     else
         printf("thread [%lu , sdl] was not cancelled !!\n", sdl_thread);
+    // Suppression des ressources utilisees
+    int check_destroy = 0;
+    check_destroy += pthread_mutex_destroy(&synchro_depo);
+    check_destroy += pthread_mutex_destroy(&synchro_conso);
+    check_destroy += pthread_mutex_destroy(&synchro_texture);
+    check_destroy += pthread_mutex_destroy(&synchro_fenetre);
+    check_destroy += pthread_mutex_destroy(&hashmap_mutex);
+
+    check_destroy += pthread_cond_destroy(&cond_depo);
+    check_destroy += pthread_cond_destroy(&cond_conso);
+    check_destroy += pthread_cond_destroy(&cond_texture);
+    check_destroy += pthread_cond_destroy(&cond_fenetre);
+    if (check_destroy != 0) {
+        printf("[main] %i erreurs dans la suppression des mutex\n", check_destroy);
+        exit(EXIT_FAILURE);
+    }
+    // sortie
     exit(EXIT_SUCCESS);    
 }
