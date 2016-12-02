@@ -1,10 +1,15 @@
 #include <time.h>
 #include <assert.h>
+#include <pthread.h>
+#include <errno.h>
+
 #include "ensivorbis.h"
 #include "ensitheora.h"
 #include "stream_common.h"
 #include "synchro.h"
 
+#define handle_error_en(en, msg) \
+    do{errno=en; perror(msg); exit(EXIT_FAILURE);} while (0)
 bool fini = false;
 
 
@@ -15,7 +20,7 @@ int msFromStart() {
     clock_gettime(CLOCK_REALTIME, & now);
 
     return (int)((now.tv_sec - datedebut.tv_sec)*1000.0 +
-	      (now.tv_nsec - datedebut.tv_nsec)/1000000.0);
+		 (now.tv_nsec - datedebut.tv_nsec)/1000000.0);
 }
 
 
@@ -65,19 +70,29 @@ struct streamstate *getStreamState(ogg_sync_state *pstate, ogg_page *ppage,
 	assert(res == 0);
 
 	// proteger l'accès à la hashmap
-
+	// normalement initialise dans le main
+	pthread_mutex_lock(&hashmap_mutex);
+	// <<section critique>>
 	if (type == TYPE_THEORA)
 	    HASH_ADD_INT( theorastrstate, serial, s );
 	else
+	    // simplification de l'enonce : protection des deux acces 
 	    HASH_ADD_INT( vorbisstrstate, serial, s );
+	// <<fin section critique>>
+	pthread_mutex_unlock(&hashmap_mutex);
 
     } else {
 	// proteger l'accès à la hashmap
-
+	// normalement initialise dans le main
+	pthread_mutex_lock(&hashmap_mutex);
+	// <<zone critique>>	
 	if (type == TYPE_THEORA)
 	    HASH_FIND_INT( theorastrstate, & serial, s );
 	else	
+	    // simplification de l'enonce : protection des 2 acces
 	    HASH_FIND_INT( vorbisstrstate, & serial, s );    
+	// <<fin zone critique>>
+	pthread_mutex_unlock(&hashmap_mutex);
 
 	assert(s != NULL);
     }
@@ -108,7 +123,7 @@ int getPacket(struct streamstate *s) {
 /* create additional threads if the stream is of the right type */
 /* return 1, if the packet is fully handled 
    otherwise return 0;
- */
+*/
 
 int decodeAllHeaders(int respac, struct streamstate *s, enum streamtype type) {
     // if the packet is complete, decode it
@@ -116,9 +131,9 @@ int decodeAllHeaders(int respac, struct streamstate *s, enum streamtype type) {
 	s->strtype != TYPE_VORBIS) {
 	// try to detect if the packet contain a theora header
 	int res = th_decode_headerin(& s->th_dec.info,
-				 & s->th_dec.comment,
-				 & s->th_dec.setup,
-				 & s->packet);
+				     & s->th_dec.comment,
+				     & s->th_dec.setup,
+				     & s->packet);
 
 	if (res != TH_ENOTFORMAT) {
 	    // this is a theora
@@ -141,7 +156,10 @@ int decodeAllHeaders(int respac, struct streamstate *s, enum streamtype type) {
 	    if (type == TYPE_THEORA) {
 		// lancement du thread gérant l'affichage (draw2SDL)
 	        // inserer votre code ici !!
-
+		int check_sdl;
+		check_sdl = pthread_create(&sdl_thread, NULL, draw2SDL, &(s->serial));
+		if (check_sdl != 0)
+		    handle_error_en(check_sdl, "pthread_create");
 		assert(res == 0);		     
 	    }
 	}
@@ -149,8 +167,8 @@ int decodeAllHeaders(int respac, struct streamstate *s, enum streamtype type) {
     if (respac == 1 && (! s->headersRead)
 	&& s->strtype != TYPE_THEORA) {
 	int res = vorbis_synthesis_headerin(& s->vo_dec.info,
-					& s->vo_dec.comment,
-					& s->packet);
+					    & s->vo_dec.comment,
+					    & s->packet);
 
 	if (res ==  OV_ENOTVORBIS && s->strtype == TYPE_VORBIS) {
 	    // first packet
