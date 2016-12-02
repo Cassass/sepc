@@ -30,17 +30,17 @@ int main(int argc, char *argv[]) {
     // initialisation des structures mises en place dans synchro
     // initialisation des mutex
     int check_init_mutex = 0;
-    check_init_mutex = pthread_mutex_init(&hashmap_mutex,NULL);
-    check_init_mutex += pthread_mutex_init(&synchro_fenetre,NULL);
-    check_init_mutex += pthread_mutex_init(&synchro_texture,NULL);
-    check_init_mutex += pthread_mutex_init(&synchro_conso,NULL);
-    check_init_mutex += pthread_mutex_init(&synchro_depo,NULL);
+    check_init_mutex = pthread_mutex_init(&hashmap_mutex, NULL);
+    check_init_mutex += pthread_mutex_init(&synchro_fenetre, NULL);
+    check_init_mutex += pthread_mutex_init(&synchro_texture, NULL);
+    check_init_mutex += pthread_mutex_init(&synchro_conso, NULL);
     if (check_init_mutex != 0){
         // nb : on peut le gérer via des perror et la fct en define
         // mais c'est long pour pas grand chose
         printf("[main] %i erreur(s) dans l'init des mutex\n", check_init_mutex);
         exit(EXIT_FAILURE);
     }
+    
     // initialisation des conditions associees
     check_init_mutex = pthread_cond_init(&cond_fenetre, NULL);
     check_init_mutex += pthread_cond_init(&cond_texture, NULL);
@@ -50,14 +50,18 @@ int main(int argc, char *argv[]) {
         printf("[main] %i errreurs(s) dans l'init des mutex\n", check_init_mutex);
         exit(EXIT_FAILURE);
     }
+
     // start the two stream readers
     int check_theora;
     int check_vorbis;
-    check_theora = pthread_create(&theora_reader_thread, NULL, theoraStreamReader, &argv[1]);
+    printf("lancement thread theora et vorbis...");
+    check_theora = pthread_create(&theora_reader_thread, NULL,
+                                  theoraStreamReader, (void *)argv[1]);
     if (check_theora != 0)
         handle_error_en(check_theora, "pthread_create");
 
-    check_vorbis = pthread_create(&vorbis_reader_thread, NULL, vorbisStreamReader, &argv[1]);
+    check_vorbis = pthread_create(&vorbis_reader_thread, NULL,
+                                  vorbisStreamReader,(void *) argv[1]);
     if (check_vorbis != 0)
         handle_error_en(check_vorbis, "pthread_create");
         
@@ -66,8 +70,8 @@ int main(int argc, char *argv[]) {
     check_vorbis = pthread_join(vorbis_reader_thread, &aud_status);
     if (check_vorbis != 0)
         handle_error_en(check_vorbis, "pthread_join");        
-    
-    printf("thread [%lu, vorbis] achevé\n", vorbis_reader_thread);
+    if (aud_status == 0)
+        printf("thread [%lu, vorbis] achevé\n", vorbis_reader_thread);
     // 1 seconde de garde pour le son,
     sleep(1);
 
@@ -104,7 +108,6 @@ int main(int argc, char *argv[]) {
         printf("thread [%lu , sdl] was not cancelled !!\n", sdl_thread);
     // Suppression des ressources utilisees
     int check_destroy = 0;
-    check_destroy += pthread_mutex_destroy(&synchro_depo);
     check_destroy += pthread_mutex_destroy(&synchro_conso);
     check_destroy += pthread_mutex_destroy(&synchro_texture);
     check_destroy += pthread_mutex_destroy(&synchro_fenetre);

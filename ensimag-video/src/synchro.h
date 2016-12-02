@@ -15,7 +15,7 @@ extern pthread_t theora_reader_thread, vorbis_reader_thread, sdl_thread;
 // mutex de protection pour la hasmap
 extern pthread_mutex_t hashmap_mutex;
 // mutex pour les synchronisations
-extern pthread_mutex_t synchro_fenetre, synchro_texture, synchro_conso, synchro_depo;
+extern pthread_mutex_t synchro_fenetre, synchro_texture, synchro_conso;
 // conditions pour les synchros
 extern pthread_cond_t cond_fenetre, cond_texture, cond_conso, cond_depo;
 // booleen pour attente fenetre/texture

@@ -14,7 +14,6 @@ pthread_mutex_t hashmap_mutex;
 pthread_mutex_t synchro_fenetre;
 pthread_mutex_t synchro_texture;
 pthread_mutex_t synchro_conso;
-pthread_mutex_t synchro_depo;
 // conditions pour les synchros
 pthread_cond_t cond_fenetre;
 pthread_cond_t cond_texture;
@@ -62,7 +61,7 @@ void attendreFenetreTexture() {
 // ici verif que l'on peut consommer les textures
 void debutConsommerTexture() {
     pthread_mutex_lock(&synchro_conso);
-    while (nb_tex < NBTEX) {
+    while (nb_tex == 0) {
         pthread_cond_wait(&cond_conso, &synchro_conso);
     }
     pthread_mutex_unlock(&synchro_conso);
@@ -72,22 +71,24 @@ void debutConsommerTexture() {
 void finConsommerTexture() {
     pthread_mutex_lock(&synchro_conso);
     --nb_tex;
+    pthread_cond_signal(&cond_depo);
     pthread_mutex_unlock(&synchro_conso);
 }
 
 // verification possibilite depose
 void debutDeposerTexture() {
-    pthread_mutex_lock(&synchro_depo);
-    while (nb_tex < NBTEX) {
-        pthread_cond_wait(&cond_depo, &synchro_depo);
+    pthread_mutex_lock(&synchro_conso);
+    while (nb_tex == NBTEX) {
+        pthread_cond_wait(&cond_depo, &synchro_conso);
     }
-    pthread_mutex_unlock(&synchro_depo);
+    pthread_mutex_unlock(&synchro_conso);
 
 }
 
 //  depot
 void finDeposerTexture() {
-    pthread_mutex_lock(&synchro_depo);
+    pthread_mutex_lock(&synchro_conso);
     ++nb_tex;
-    pthread_mutex_unlock(&synchro_depo);
+    pthread_cond_signal(&cond_conso);
+    pthread_mutex_unlock(&synchro_conso);
 }
