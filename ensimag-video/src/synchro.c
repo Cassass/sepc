@@ -71,7 +71,7 @@ void debutConsommerTexture() {
 void finConsommerTexture() {
     pthread_mutex_lock(&synchro_conso);
     --nb_tex;
-    pthread_cond_signal(&cond_depo);
+    pthread_cond_broadcast(&cond_depo);
     pthread_mutex_unlock(&synchro_conso);
 }
 
@@ -89,6 +89,6 @@ void debutDeposerTexture() {
 void finDeposerTexture() {
     pthread_mutex_lock(&synchro_conso);
     ++nb_tex;
-    pthread_cond_signal(&cond_conso);
+    pthread_cond_broadcast(&cond_conso);
     pthread_mutex_unlock(&synchro_conso);
 }
